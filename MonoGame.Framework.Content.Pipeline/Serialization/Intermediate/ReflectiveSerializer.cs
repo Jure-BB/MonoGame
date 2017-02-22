@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Xml;
 using Microsoft.Xna.Framework.Utilities;
 
 namespace Microsoft.Xna.Framework.Content.Pipeline.Serialization.Intermediate
@@ -158,25 +159,52 @@ namespace Microsoft.Xna.Framework.Content.Pipeline.Serialization.Intermediate
             }
 
             // First deserialize the base type.
-            if (_baseSerializer != null)
-                _baseSerializer.Deserialize(input, format, result);
+            _baseSerializer?.Deserialize(input, format, result);
 
             // Now deserialize our own elements.
-            foreach (var info in _elements)
+            var remainingElements = _elements.ToList();
+            while (remainingElements.Count > 0)
             {
-                if (!info.Attribute.FlattenContent)
+                input.MoveToElement();
+                if (input.Xml.NodeType == XmlNodeType.EndElement)
                 {
-                    if (!input.MoveToElement(info.Attribute.ElementName))
+                    if (remainingElements.TrueForAll(e => e.Attribute.Optional))
+                        break;
+                            //we have reached the end in xml and all other elements are optional
+                    else // We failed to find a required element.
                     {
-                        // If the the element was optional then we can
-                        // safely skip it and continue.
-                        if (info.Attribute.Optional)
-                            continue;
-                        
-                        // We failed to find a required element.
-                        throw new InvalidContentException(string.Format("The Xml element `{0}` is required!", info.Attribute.ElementName));
+                        var requiredElementName = remainingElements.Find
+                            (e => !e.Attribute.Optional).Attribute.ElementName;
+                        throw new InvalidContentException
+                            ($"The Xml element `{requiredElementName}` is required!");
                     }
                 }
+                var i = remainingElements.FindIndex
+                    (elementInfo => elementInfo.Attribute.ElementName == input.Xml.Name);
+                if (i < 0)
+                {
+                    //TODO: Flattened nested objects. 
+                    // If nested object was flattened we won't find it inside _elements list
+                    // Reading of nested classes depends on order and is thus impossible
+                    // to implement this as order independent 
+                    // (lets say a case where two properties of the same class are nested)
+                    throw new NotSupportedException();
+                }
+                var info = remainingElements[i];
+                remainingElements.RemoveAt(i);
+                //if (!info.Attribute.FlattenContent)
+                //{
+                //    if (!input.MoveToElement())
+                //    {
+                //        // If the the element was optional then we can
+                //        // safely skip it and continue.
+                //        if (info.Attribute.Optional)
+                //            continue;
+
+                //        // We failed to find a required element.
+                //        throw new InvalidContentException(string.Format("The Xml element `{0}` is required!", info.Attribute.ElementName));
+                //    }
+                //}
 
                 if (info.Attribute.SharedResource)
                 {
@@ -194,6 +222,38 @@ namespace Microsoft.Xna.Framework.Content.Pipeline.Serialization.Intermediate
                     info.Setter(result, value);
                 }
             }
+            //foreach (var info in _elements)
+            //{
+            //    if (!info.Attribute.FlattenContent)
+            //    {
+            //        if (!input.MoveToElement(info.Attribute.ElementName))
+            //        {
+            //            // If the the element was optional then we can
+            //            // safely skip it and continue.
+            //            if (info.Attribute.Optional)
+            //                continue;
+                        
+            //            // We failed to find a required element.
+            //            throw new InvalidContentException(string.Format("The Xml element `{0}` is required!", info.Attribute.ElementName));
+            //        }
+            //    }
+
+            //    if (info.Attribute.SharedResource)
+            //    {
+            //        Action<object> fixup = (o) => info.Setter(result, o);
+            //        input.ReadSharedResource(info.Attribute, fixup);
+            //    }
+            //    else if (info.Setter == null)
+            //    {
+            //        var value = info.Getter(result);
+            //        input.ReadObject(info.Attribute, info.Serializer, value);
+            //    }
+            //    else
+            //    {
+            //        var value = input.ReadObject<object>(info.Attribute, info.Serializer);
+            //        info.Setter(result, value);
+            //    }
+            //}
 
             if (_collectionHelper != null)
                 _collectionHelper.Deserialize(input, result, format);

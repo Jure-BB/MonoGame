@@ -29,7 +29,11 @@ namespace Microsoft.Xna.Framework.Content.Pipeline.Serialization.Intermediate
             _resourceFixups = new Dictionary<string, Action<object>>();
             _externalReferences = new Dictionary<string, List<Action<Type, string>>>();
         }
-
+        public bool MoveToElement()
+        {
+            var nodeType = Xml.MoveToContent();
+            return nodeType == XmlNodeType.Element;
+        }
         public bool MoveToElement(string elementName)
         {
             var nodeType = Xml.MoveToContent();
